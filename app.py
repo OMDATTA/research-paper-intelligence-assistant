@@ -1,8 +1,9 @@
 """Vercel-compatible FastAPI application for PaperLens.
 
-The home page serves the existing browser-first website from ``docs/``. PDF
-selection, multi-paper search, semantic embeddings, and larger-document
-workflows remain in the browser/Colab. The optional ``/api/analyze`` route
+Vercel serves the browser-first website from the root ``public/`` directory;
+the same assets remain in ``docs/`` for GitHub Pages. PDF selection,
+multi-paper search, semantic embeddings, and larger-document workflows remain
+in the browser/Colab. The optional ``/api/analyze`` route
 provides a small-file Python analysis endpoint for one text-based PDF.
 
 Vercel Functions have a 4.5 MB request body limit. This route caps the PDF
@@ -10,20 +11,18 @@ payload at 4 MiB to leave room for multipart/form-data overhead.
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from src.pdf_processor import extract_pdf_pages
-from src.search_engine import TfidfSearchEngine
-from src.summarizer import summarize_text
-from src.text_processing import create_chunks
-
 BASE_DIR = Path(__file__).resolve().parent
 DOCS_DIR = BASE_DIR / "docs"
 MAX_UPLOAD_BYTES = 4 * 1024 * 1024  # 4 MiB; Vercel request cap is 4.5 MB.
+
+logger = logging.getLogger("paperlens")
 
 app = FastAPI(
     title="PaperLens — Research Paper Intelligence Assistant",
@@ -122,9 +121,27 @@ async def analyze_pdf(
     if not pdf_bytes.startswith(b"%PDF"):
         raise HTTPException(status_code=415, detail="The file does not appear to be a valid PDF.")
 
+    # Import heavier scientific/PDF dependencies only when analysis is requested.
+    # This keeps website startup independent from scikit-learn and PyMuPDF imports.
+    try:
+        from src.pdf_processor import extract_pdf_pages
+        from src.search_engine import TfidfSearchEngine
+        from src.summarizer import summarize_text
+        from src.text_processing import create_chunks
+    except Exception as exc:
+        logger.exception("PDF analysis dependencies failed to import")
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "The PDF analysis service could not load its Python dependencies. "
+                "Check the Vercel Runtime Logs for the underlying import error."
+            ),
+        ) from exc
+
     try:
         pages = extract_pdf_pages(pdf_bytes)
     except Exception as exc:
+        logger.exception("Uploaded PDF could not be read")
         # Do not expose internal paths or library error details to the caller.
         raise HTTPException(status_code=422, detail="The PDF could not be read.") from exc
 
