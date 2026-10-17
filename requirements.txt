@@ -1,7 +1,7 @@
-streamlit
-pymupdf
-pandas
-numpy
-scikit-learn
-matplotlib
-sentence-transformers
+# Runtime dependencies for Vercel/FastAPI.
+fastapi>=0.115,<1.0
+python-multipart>=0.0.9,<1.0
+uvicorn>=0.30,<1.0
+pymupdf>=1.24,<2.0
+numpy>=1.24,<3.0
+scikit-learn>=1.4,<2.0
